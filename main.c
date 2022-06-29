@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <stdbool.h>
-
+#include <string.h>
 
 // Making a solver for the rummykub game consisting of tiles composed with number going from 1 to 13 and colors red, blue, green, and yellow.
 // A tile set is a collection of tiles.
@@ -25,12 +25,14 @@
 struct Tile_s{
     int number;
     char color;
+    struct Tile_s* previous_tile;
     struct Tile_s* next_tile;
 };
 
 // A Set of tiles constitued of an array of tiles and its size
 struct TileSet_s{
     struct Tile_s* tiles;
+    struct Tile_s* last_tile;
     struct TileSet_s* next_set;
     int number;
 };
@@ -384,6 +386,37 @@ void AddTilesFromTileSetToTileSet(struct TileSet_s* tileset, struct TileSet_s* t
     
 }
 
+// Pick last tile from a tile set (last_tile = last tile in the tile set)
+struct Tile_s* PickLastTile(struct TileSet_s* tileset){
+    struct Tile_s* last_tile = tileset->last_tile;
+    last_tile->previous_tile->next_tile = NULL;
+    tileset->last_tile = last_tile->previous_tile;
+    return last_tile;
+}
+
+// Pick first tile from a tile set (first_tile = first tile in the tile set)
+struct Tile_s* PickFirstTile(struct TileSet_s* tileset){
+    struct Tile_s* first_tile = tileset->tiles;
+    tileset->tiles = first_tile->next_tile;
+    if(first_tile->next_tile)
+        first_tile->next_tile->previous_tile = NULL;
+    return first_tile;
+}
+
+// Put a tile at the end of a tile set
+void PutTileAtEndOfTileSet(struct TileSet_s* tileset, struct Tile_s* tile){
+    if(!tileset->tiles)
+    {
+        tileset->tiles = tile;
+        return;
+    }
+
+    tileset->last_tile->next_tile = tile;
+    tileset->last_tile = tile;
+}
+
+
+
 int GetScoreFromTileSet(struct TileSet_s* tileset)
 {
     int score = 0;
@@ -513,37 +546,53 @@ bool IsValidSet(struct TileSet_s* tileset)
     return false;
 }
 
+// Remove white space from a given string
+void RemoveSpaceFromString(char* s) {
+    char* d = s;
+    do {
+        while (*d == ' ') {
+            ++d;
+        }
+    } while (*s++ = *d++);
+}
 
-// Return a tile set from a given string : "1R 2R 3R"
+// Return tile set from a given string : "1R 2R 3R, 1G 2G 3G, 1B 2B 3B" this string will create 3 tile sets : 1R 2R 3R, 1G 2G 3G, 1B 2B 
+
 struct TileSet_s* GetTileSetFromString(char* string)
 {
-    struct TileSet_s* tileset = CreateTilesSet();
-    char* cursor = string;
-    while(*cursor)
+    struct TileSet_s* tileset = NULL;
+    char buffer[100];
+    strcpy(buffer, string);
+    char* token = strtok(buffer, ",");
+    char* cursor;
+    while(token)
     {
-        int number = 0;
-        char color = 0;
-        while(isdigit(*cursor))
+        cursor = token;
+        AddTileSetToTileSet(&tileset, CreateTilesSet());
+        while(*cursor != '\n')
         {
-            number = number * 10 + (*cursor - '0');
+            int number = 0;
+            char color = 0;
+            while(isdigit(*cursor))
+            {
+                number = number * 10 + (*cursor - '0');
+                cursor++;
+            }
+            if(*cursor == 'R')
+                color = 'R';
+            else if(*cursor == 'B')
+                color = 'B';
+            else if(*cursor == 'G')
+                color = 'G';
+            else if(*cursor == 'Y')
+                color = 'Y';
+            else
+                break;
+
+            AddTileToTileSet(&tileset, CreateTile(number, color));
             cursor++;
         }
-        if(*cursor == 'R')
-            color = 'R';
-        else if(*cursor == 'B')
-            color = 'B';
-        else if(*cursor == 'G')
-            color = 'G';
-        else if(*cursor == 'Y')
-            color = 'Y';
-        else
-            return NULL;
-
-        AddTileToTileSet(&tileset, CreateTile(number, color));
-        cursor++;
-        if(!*cursor)
-            return tileset;
-        cursor++;
+        token = strtok(NULL, ",");
     }
     return tileset;
 }
@@ -579,6 +628,7 @@ char* GetStringInput()
 {
     char* string = malloc(sizeof(char) * 100);
     fgets(string, 100, stdin);
+    RemoveSpaceFromString(string);
     return string;
 }
 
@@ -591,6 +641,7 @@ struct TileSet_s* GetTileSetFromMenu()
     {
         printf("Enter a string to create a tile set :\n");
         string = GetStringInput();
+        printf("%s\n", string);
         tileset = GetTileSetFromString(string);
         if(!tileset)
             printf("Invalid string\n");
@@ -637,6 +688,7 @@ void MainLoop()
             printf("Enter a string to create a player tile set :\n");
             char* string = GetStringInput();
             player_tileset = GetTileSetFromString(string);
+
             free(string);
         }
         else if(selection == 2)
@@ -708,7 +760,8 @@ void MainLoop()
         if(player_tileset)
         {
             printf("Player tile set :\n");
-            PrintTileSet(player_tileset);
+            PrintPlayerTileSet(player_tileset);
+            printf("\n")
         }
         if(table_tileset)
         {
@@ -778,11 +831,14 @@ void AddTileToTileSet(struct TileSet_s** tileset, struct Tile_s* tile)
 {
     if(!(*tileset)->tiles)
     {
+        tile->previous_tile = NULL;
         (*tileset)->tiles = tile;
         (*tileset)->number++;
+        (*tileset)->last_tile = tile;
         return;
     }
 
+    (*tileset)->tiles->previous_tile = tile;
     tile->next_tile = (*tileset)->tiles;
     (*tileset)->tiles = tile;
     (*tileset)->number++;
@@ -918,8 +974,15 @@ void AddTileToSortedTileSet(struct TileSet_s** tileset, struct Tile_s* tile)
 {
     /* Special case for the head end */
     if ((*tileset)->tiles == NULL || (*tileset)->tiles->number >= tile->number) {
+        if(!(*tileset)->tiles)
+            tile->previous_tile = NULL;
+        else
+            tile->previous_tile = (*tileset)->tiles;
+
         tile->next_tile = (*tileset)->tiles;
         (*tileset)->tiles = tile;
+        (*tileset)->last_tile = tile;
+
         (*tileset)->number++;
     }
     else {
@@ -983,11 +1046,13 @@ void PrintTileSets(struct TileSet_s* tileset)
     while(tileset)
     {
         struct Tile_s* cursor = tileset->tiles;
+        printf("| ");
         for (int i = 0; i < tileset->number; i++, cursor = cursor->next_tile)
         {
             PrintTile(cursor);
         }
-        printf("\n");
+        printf(" |");
+
         tileset = tileset->next_set;
     }
     
@@ -996,11 +1061,12 @@ void PrintTileSets(struct TileSet_s* tileset)
 void PrintTileSet(struct TileSet_s* tileset)
 {
         struct Tile_s* cursor = tileset->tiles;
+        printf("| ");
         for (int i = 0; i < tileset->number; i++, cursor = cursor->next_tile)
         {
             PrintTile(cursor);
         }
-        printf("\n");
+        printf(" |");
         tileset = tileset->next_set;
     
 }
