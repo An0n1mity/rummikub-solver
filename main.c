@@ -365,6 +365,32 @@ struct TileSet_s* CopyTileSetsWithoutSet(struct TileSet_s* tileset, struct TileS
     return new_set;
 }
 
+struct TileSet_s* CopyTileSetsWithoutTile(struct TileSet_s* tileset, struct Tile_s* tile)
+{
+    struct TileSet_s* new_set = NULL;
+    struct TileSet_s* cursor = tileset;
+    struct Tile_s* cursor_tile;
+    while(cursor)
+    {
+        AddTileSetToTileSet(&new_set, CreateTilesSet());
+        cursor_tile = cursor->tiles;
+        while(cursor_tile)
+        {
+            if(cursor_tile == tile)
+            {
+                cursor_tile = cursor_tile->next_tile;
+                continue;
+            }
+            AddTileToSortedTileSet(&new_set, CreateTile(cursor_tile->number, cursor_tile->color));
+            cursor_tile = cursor_tile->next_tile;
+        }
+        cursor = cursor->next_set;
+    }
+    if(!new_set->tiles)
+        RemoveTileSet(&new_set);
+    return new_set;
+}
+
 // Remove tiles in tile set from a given tile set
 struct TileSet_s* RemoveTilesFromTileSet(struct TileSet_s* tileset, struct TileSet_s* tileset_to_remove){
     if(!tileset || !tileset_to_remove)
@@ -997,14 +1023,15 @@ bool areValidSets(struct TileSet_s* tileset)
 }
 
 // Remove tile set from tile set list
-void RemoveTileSet(struct TileSet_s* tileset_to_remove)
+void RemoveTileSet(struct TileSet_s** tileset_to_remove)
 {
-    if(!tileset_to_remove)
+    if(!*tileset_to_remove)
         return;
-    if(tileset_to_remove->next_set)
-        tileset_to_remove->next_set->previous_set = tileset_to_remove->previous_set;
-    if(tileset_to_remove->previous_set)
-        tileset_to_remove->previous_set->next_set = tileset_to_remove->next_set;
+    if((*tileset_to_remove)->next_set)
+        (*tileset_to_remove)->next_set->previous_set = (*tileset_to_remove)->previous_set;
+    if((*tileset_to_remove)->previous_set)
+        (*tileset_to_remove)->previous_set->next_set = (*tileset_to_remove)->next_set;
+    (*tileset_to_remove) = (*tileset_to_remove)->next_set;
 }
 
 // Get shortest non valid set 
@@ -1026,15 +1053,33 @@ struct TileSet_s* GetShortestNonValidSet(struct TileSet_s* tileset)
     return min_set;
 }
 
-struct TileSet_s* wichTilesCanAddOnStart(struct TileSet_s* tileset)
+struct TileSet_s* wichTilesCanAddOnStart(struct TileSet_s* illegal_tileset, struct TileSet_s* tileset)
 {
-    struct TileSet_s* set_to_add = NULL;
-    if(tileset->tiles->number > 1)
-        AddTileToTileSet(&set_to_add, CreateTile(tileset->tiles->number-1, tileset->tiles->color));
-    if(tileset->number < 4)
+    struct TileSet_s* set_to_add = CreateTilesSet();
+    struct Tile_s* tile_cursor = tileset->tiles;
+    struct TileSet_s* tileset_cursor = tileset;
+
+    // if the first tile of the illegal set is superior to 1 we can complete it with 2, 3, 4...
+    if((illegal_tileset->tiles->number > 1) )
+    {
+        // Search a tile for completion
+        while(tileset_cursor)
+        {
+            tileset_cursor = tileset_cursor->tiles;
+            while(tile_cursor)
+            {
+                if(tile_cursor->number == illegal_tileset->tiles->number - 1)
+                    AddTileToTileSet(&set_to_add, tile_cursor);
+                tile_cursor = tile_cursor->next_tile;
+            }
+            tileset_cursor = tileset_cursor->next_set;
+        }
+    }
+
+    if(illegal_tileset->number < 4)
     {
         bool red, green, blue, yellow;
-        struct Tile_s* cursor = tileset->tiles;
+        struct Tile_s* cursor = illegal_tileset->tiles;
         while(cursor)
         {
             switch(cursor->color)
@@ -1055,26 +1100,58 @@ struct TileSet_s* wichTilesCanAddOnStart(struct TileSet_s* tileset)
             cursor = cursor->next_tile;
         }
 
-        if(!red)
-            AddTileToTileSet(&set_to_add, CreateTile(1, 'R'));
-        if(!green)
-            AddTileToTileSet(&set_to_add, CreateTile(1, 'G'));
-        if(!blue)
-            AddTileToTileSet(&set_to_add, CreateTile(1, 'B'));
-        if(!yellow) 
-            AddTileToTileSet(&set_to_add, CreateTile(1, 'Y'));
+        tile_cursor = tileset->tiles;
+        tileset_cursor = tileset;
+    
+        // Search a tile for completion
+        while(tileset_cursor)
+        {
+            tileset_cursor = tileset_cursor->tiles;
+            while(tile_cursor)
+            {
+                if(!red && (tile_cursor->number == illegal_tileset->tiles->number) && (tile_cursor->color == 'R'))
+                    AddTileToTileSet(&set_to_add, tile_cursor);
+                if(!green && (tile_cursor->number == illegal_tileset->tiles->number) && (tile_cursor->color == 'G'))
+                    AddTileToTileSet(&set_to_add, tile_cursor);
+                if(!blue && (tile_cursor->number == illegal_tileset->tiles->number) && (tile_cursor->color == 'B'))
+                    AddTileToTileSet(&set_to_add, tile_cursor);
+                if(!yellow && (tile_cursor->number == illegal_tileset->tiles->number) && (tile_cursor->color == 'Y'))
+                    AddTileToTileSet(&set_to_add, tile_cursor);
+                tile_cursor = tile_cursor->next_tile;
+            }
+            tileset_cursor = tileset_cursor->next_set;
+        }
     }
+
+    return set_to_add;
 }
 
-struct TileSet_s* wichTilesCanAddOnEnd(struct TileSet_s* tileset)
+struct TileSet_s* wichTilesCanAddOnEnd(struct TileSet_s* illegal_tileset, struct TileSet_s* tileset)
 {
-    struct TileSet_s* set_to_add = NULL;
-    if(tileset->last_tile->number < 13)
-        AddTileToTileSet(&set_to_add, CreateTile(tileset->tiles->number+1, tileset->tiles->color));
-    if(tileset->number < 4)
+     struct TileSet_s* set_to_add = CreateTilesSet();
+    struct Tile_s* tile_cursor = tileset->tiles;
+    struct TileSet_s* tileset_cursor = tileset;
+
+    // if the first tile of the illegal set is superior to 1 we can complete it with 2, 3, 4...
+    if(illegal_tileset->last_tile->number < 13)
+    {
+        // Search a tile for completion
+        while(tileset_cursor)
+        {
+            tileset_cursor = tileset_cursor->tiles;
+            while(tile_cursor)
+            {
+                if(tile_cursor->number == illegal_tileset->tiles->number + 1)
+                    AddTileToTileSet(&set_to_add, tile_cursor);
+                tile_cursor = tile_cursor->next_tile;
+            }
+            tileset_cursor = tileset_cursor->next_set;
+        }
+    }
+     if(illegal_tileset->number < 4)
     {
         bool red, green, blue, yellow;
-        struct Tile_s* cursor = tileset->tiles;
+        struct Tile_s* cursor = illegal_tileset->tiles;
         while(cursor)
         {
             switch(cursor->color)
@@ -1095,15 +1172,30 @@ struct TileSet_s* wichTilesCanAddOnEnd(struct TileSet_s* tileset)
             cursor = cursor->next_tile;
         }
 
-        if(!red)
-            AddTileToTileSet(&set_to_add, CreateTile(1, 'R'));
-        if(!green)
-            AddTileToTileSet(&set_to_add, CreateTile(1, 'G'));
-        if(!blue)
-            AddTileToTileSet(&set_to_add, CreateTile(1, 'B'));
-        if(!yellow) 
-            AddTileToTileSet(&set_to_add, CreateTile(1, 'Y'));
+        tile_cursor = tileset->tiles;
+        tileset_cursor = tileset;
+    
+        // Search a tile for completion
+        while(tileset_cursor)
+        {
+            tileset_cursor = tileset_cursor->tiles;
+            while(tile_cursor)
+            {
+                if(!red && (tile_cursor->number == illegal_tileset->tiles->number) && (tile_cursor->color == 'R'))
+                    AddTileToTileSet(&set_to_add, tile_cursor);
+                if(!green && (tile_cursor->number == illegal_tileset->tiles->number) && (tile_cursor->color == 'G'))
+                    AddTileToTileSet(&set_to_add, tile_cursor);
+                if(!blue && (tile_cursor->number == illegal_tileset->tiles->number) && (tile_cursor->color == 'B'))
+                    AddTileToTileSet(&set_to_add, tile_cursor);
+                if(!yellow && (tile_cursor->number == illegal_tileset->tiles->number) && (tile_cursor->color == 'Y'))
+                    AddTileToTileSet(&set_to_add, tile_cursor);
+                tile_cursor = tile_cursor->next_tile;
+            }
+            tileset_cursor = tileset_cursor->next_set;
+        }
     }
+
+    return set_to_add;
 }
 
 // Remove first tile from tileset
@@ -1153,7 +1245,7 @@ struct TileSet_s* ResolvedTileset(struct TileSet_s* tileset, int depth)
         struct TileSet_s* table_sets;// = tileset;
         while(tile)
         {
-            table_sets = CopyTileSetsWithoutSet(best->tile_set, illegal_set);
+            table_sets = CopyTileSetsWithoutTile(best->tile_set, tile);
             struct TileSet_s* cursor = table_sets;
             while(cursor)
             {
@@ -1175,17 +1267,18 @@ struct TileSet_s* ResolvedTileset(struct TileSet_s* tileset, int depth)
 
                 cursor = cursor->next_set;
             }
+            FreeTileSet(table_sets);
             tile = tile->next_tile;
         }
+    }
+    printf("oof\n");
 
         // Check wich tiles can be added to the illegal set
-        /*struct TileSet_s* set_to_add_left = wichTilesCanAddOnStart(illegal_set);
-        struct TileSet_s* set_to_add_right = wichTilesCanAddOnEnd(illegal_set);
-
+        /*table_sets = CopyTileSetSet(best->tile_set, illegal_set);
         struct Tile_s* cursor = NULL;
-
+        struct TileSet_s* set_to_add_left = wichTilesCanAddOnStart(illegal_set, table_sets);
         if(set_to_add_left)
-            cursor = set_to_add_left->tiles;
+                    cursor = set_to_add_left->tiles;
         while(cursor)
         {
             FreeTileSet(illegal_set);
@@ -1195,6 +1288,10 @@ struct TileSet_s* ResolvedTileset(struct TileSet_s* tileset, int depth)
             AddToPriorityQueue(&queue, CreatePriorityQueue(table_sets, depth + 1));
             cursor = cursor->next_tile;
         }
+
+        struct TileSet_s* set_to_add_right = wichTilesCanAddOnEnd(illegal_set, table_sets);
+
+    
 
         if(set_to_add_right)
             cursor = set_to_add_right->tiles;
@@ -1206,9 +1303,9 @@ struct TileSet_s* ResolvedTileset(struct TileSet_s* tileset, int depth)
             PutTileAtEndOfTileSet(illegal_set, cursor);
             AddToPriorityQueue(&queue, CreatePriorityQueue(table_sets, depth + 1));
             cursor = cursor->next_tile;
-        }*/
+        }
     }
-
+    */
      
 }
 
