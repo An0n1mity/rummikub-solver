@@ -339,17 +339,23 @@ struct TileSet_s* CopyTileSets(struct TileSet_s* tileset)
 {
     struct TileSet_s* new_set = NULL;
     struct TileSet_s* cursor = tileset;
+    // Cursor is the last tile set
+    while(cursor->next_set)
+    {
+        cursor = cursor->next_set;
+    }
+
     struct Tile_s* cursor_tile;
     while(cursor)
     {
         AddTileSetToTileSet(&new_set, CreateTilesSet());
-        cursor_tile = cursor->tiles;
+        cursor_tile = cursor->last_tile;
         while(cursor_tile)
         {
-            AddTileToSortedTileSet(&new_set, CreateTile(cursor_tile->number, cursor_tile->color));
-            cursor_tile = cursor_tile->next_tile;
+            AddTileToTileSet(&new_set, CreateTile(cursor_tile->number, cursor_tile->color));
+            cursor_tile = cursor_tile->previous_tile;
         }
-        cursor = cursor->next_set;
+        cursor = cursor->previous_set;
     }
   
     return new_set;
@@ -872,14 +878,13 @@ int GetMenuSelection()
 
 // Test
     struct TileSet_s* player_tileset = CreateTilesSet();
-    AddTileToTileSet(&player_tileset, CreateTile(3, 'R'));
+    AddTileToTileSet(&player_tileset, CreateTile(6, 'B'));
 
     struct TileSet_s* table_tileset = CreateTilesSet();
-    AddTileToSortedTileSet(&table_tileset, CreateTile(1, 'R'));
-    AddTileToSortedTileSet(&table_tileset, CreateTile(2, 'R'));
-    AddTileToSortedTileSet(&table_tileset, CreateTile(3, 'R'));
-    AddTileToSortedTileSet(&table_tileset, CreateTile(4, 'R'));
     AddTileToSortedTileSet(&table_tileset, CreateTile(5, 'R'));
+    AddTileToSortedTileSet(&table_tileset, CreateTile(5, 'B'));
+    AddTileToSortedTileSet(&table_tileset, CreateTile(5, 'G'));
+    AddTileToSortedTileSet(&table_tileset, CreateTile(5, 'Y'));
 
 
     AddTileSetToTileSet(&table_tileset, CreateTilesSet());
@@ -887,7 +892,7 @@ int GetMenuSelection()
     AddTileToSortedTileSet(&table_tileset, CreateTile(2, 'B'));
     AddTileToSortedTileSet(&table_tileset, CreateTile(3, 'B'));
     AddTileToSortedTileSet(&table_tileset, CreateTile(4, 'B'));
-
+    PrintTileSets(table_tileset);
     AStar(player_tileset, table_tileset);
     FreeTileSets(player_tileset);
     FreeTileSets(table_tileset);
@@ -1290,7 +1295,7 @@ bool IsTileInMovedTiles(struct Tile_s* tile, struct Tile_s** moved_tiles, int nb
 struct PriorityQueue_s* ResolvedTileset(struct TileSet_s* tileset, struct PriorityQueue_s* queue, struct PriorityQueue_s** queue_to_free, int* free_idx)
 {
     // Store wich tiles were moved
-    struct Tile_s** moved_tiles = calloc(50, sizeof(struct Tile_s*));
+    struct Tile_s** moved_tiles = calloc(100, sizeof(struct Tile_s*));
     int moved_tile_idx = 0;
     // While the priority queu is not empty
     while(queue)
@@ -1311,6 +1316,8 @@ struct PriorityQueue_s* ResolvedTileset(struct TileSet_s* tileset, struct Priori
         }
         // Get the shortest non valid set from the table
         struct TileSet_s* table_sets = CopyTileSets(best->tile_set);
+        PrintTileSets(best->tile_set);
+        PrintTileSets(table_sets);
         struct TileSet_s* illegal_set = GetShortestNonValidSet(table_sets);
         // Try to concatenate each tile from the illegal tile set to every other set
         struct Tile_s* tile = illegal_set->tiles;
@@ -1335,8 +1342,10 @@ struct PriorityQueue_s* ResolvedTileset(struct TileSet_s* tileset, struct Priori
                 }
                 // Remove the tile from the illegal set
                 PopTileFromTileSet(&tile->tile_set->tiles, tile);
+                PrintTileSets(table_sets);
                 // Try to put the tile at the beggining of one of the sets
                 AddTileToTileSet(&cursor, tile);
+                PrintTileSets(table_sets);
                 // If the created set is semi legal add it to the priority queue
                 if((isPartialSet(cursor) || isValidSet(cursor)))
                 {
@@ -1349,13 +1358,17 @@ struct PriorityQueue_s* ResolvedTileset(struct TileSet_s* tileset, struct Priori
                 }           
                 // Remove the tile from the set
                 PopTileFromTileSet(&tile->tile_set->tiles, tile);
+                PrintTileSets(table_sets);
                 // Add the tile back to the illegal set
                 AddTileToTileSet(&illegal_set, tile);
+                PrintTileSets(table_sets);
 
                 // Remove the tile from the illegal set
                 PopTileFromTileSet(&tile->tile_set->tiles, tile);
+                PrintTileSets(table_sets);
                 // Try to put the tile at the end of one of the sets
                 PutTileAtEndOfTileSet(cursor, tile);
+                PrintTileSets(table_sets);
                 // If the created set is semi legal add it to the priority queue
                 if((isPartialSet(cursor) || isValidSet(cursor)))
                  {
@@ -1367,8 +1380,11 @@ struct PriorityQueue_s* ResolvedTileset(struct TileSet_s* tileset, struct Priori
                 }  
                 // Remove the tile from the set
                 PopTileFromTileSet(&tile->tile_set->tiles, tile);
+                PrintTileSets(table_sets);
                 // Add the tile back to the illegal set
                 AddTileToTileSet(&illegal_set, tile);
+                PrintTileSets(table_sets);
+
 
                 cursor = cursor->next_set;
             }
@@ -1668,6 +1684,7 @@ void PopTileFromTileSet(struct Tile_s** tile_head, struct Tile_s* tile)
         if(tile->tile_set->next_set)
             tile->tile_set->next_set->previous_set = new_set;
         tile->tile_set->next_set = new_set;
+        tile->tile_set->last_tile = tile->previous_tile;
     
         // Pop all tile after the index in the new set
         struct Tile_s* tile_cursor = tile->next_tile;
@@ -1805,10 +1822,14 @@ void AddTileToSortedTileSet(struct TileSet_s** tileset, struct Tile_s* tile)
 {
     /* Special case for the head end */
     if ((*tileset)->tiles == NULL || (*tileset)->tiles->number >= tile->number) {
+        if(!(*tileset)->tiles)
+            (*tileset)->last_tile = tile;
+    
         tile->previous_tile = NULL;
         tile->next_tile = (*tileset)->tiles;
+        if((*tileset)->tiles)
+            (*tileset)->tiles->previous_tile = tile;
         (*tileset)->tiles = tile;
-        (*tileset)->last_tile = tile;
         (*tileset)->number++;
     }
     else {
