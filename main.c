@@ -854,12 +854,15 @@ int GetMenuSelection()
 
 // Test
     struct TileSet_s* player_tileset = CreateTilesSet();
-    AddTileToTileSet(&player_tileset, CreateTile(5, 'R'));
+    AddTileToTileSet(&player_tileset, CreateTile(3, 'R'));
 
     struct TileSet_s* table_tileset = CreateTilesSet();
+    AddTileToSortedTileSet(&table_tileset, CreateTile(1, 'R'));
     AddTileToSortedTileSet(&table_tileset, CreateTile(2, 'R'));
     AddTileToSortedTileSet(&table_tileset, CreateTile(3, 'R'));
     AddTileToSortedTileSet(&table_tileset, CreateTile(4, 'R'));
+    AddTileToSortedTileSet(&table_tileset, CreateTile(5, 'R'));
+
     AddTileSetToTileSet(&table_tileset, CreateTilesSet());
     AddTileToSortedTileSet(&table_tileset, CreateTile(2, 'B'));
     AddTileToSortedTileSet(&table_tileset, CreateTile(3, 'B'));
@@ -1542,6 +1545,44 @@ void PopTileFromTileSet(struct Tile_s** tile_head, struct Tile_s* tile)
     if (*tile_head == NULL || tile == NULL) 
         return; 
   
+    // Get the tile index in the list
+    int index = 0;
+    struct Tile_s* cursor = *tile_head;
+    while(cursor && (cursor != tile))
+    {
+        cursor = cursor->next_tile;
+        index++;
+    }
+
+    // If the tile is in the middle of the list, split in two new sets
+    if(tile->tile_set->number > 2 && index != 0 && index != tile->tile_set->number-1)
+    {
+        struct TileSet_s* new_set = CreateTilesSet();
+        new_set->previous_set = tile->tile_set;
+        new_set->next_set = tile->tile_set->next_set;
+        if(tile->tile_set->next_set)
+            tile->tile_set->next_set->previous_set = new_set;
+        tile->tile_set->next_set = new_set;
+    
+        // Pop all tile after the index in the new set
+        struct Tile_s* tile_cursor = tile->next_tile;
+        while (tile_cursor)
+        {
+            if(tile_cursor->previous_tile)
+                tile_cursor->previous_tile->next_tile = tile_cursor->next_tile;
+            if(tile_cursor->next_tile)
+                tile_cursor->next_tile->previous_tile = tile_cursor->previous_tile;
+            tile_cursor->tile_set->number--;
+            tile_cursor->tile_set = new_set;
+            struct Tile_s* next_tile = tile_cursor->next_tile;
+            tile_cursor->next_tile = NULL;
+            tile_cursor->previous_tile = NULL;
+            AddTileToSortedTileSet(&new_set, tile_cursor);
+            tile_cursor = next_tile;
+        }
+        
+    }
+
     /* If node to be deleted is head node */
     if (*tile_head == tile) 
         *tile_head = tile->next_tile; 
@@ -1560,8 +1601,8 @@ void PopTileFromTileSet(struct Tile_s** tile_head, struct Tile_s* tile)
     tile->next_tile = NULL;
     tile->tile_set->number--;
 
-    if(!tile->tile_set->number)
-        DeleteTileSetFromSets(&(tile->tile_set->first_set), tile->tile_set);
+    //if(!tile->tile_set->number)
+        //DeleteTileSetFromSets(&(tile->tile_set->first_set), tile->tile_set);
  } 
 
 struct Tile_s* PickTileFromSet(struct TileSet_s* tileset)
