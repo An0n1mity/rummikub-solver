@@ -3,7 +3,7 @@
 #include <time.h>
 #include <stdbool.h>
 #include <string.h>
-
+#include <limits.h>
 // Making a solver for the rummykub game consisting of tiles composed with number going from 1 to 13 and colors red, blue, green, and yellow.
 // A tile set is a collection of tiles.
 // A tile set is valid if it contains at least 3 tiles of the same number but different colors, or if it contains at least 3 tiles of the same color but adjacent numbers.
@@ -45,6 +45,7 @@ struct PriorityQueue_s{
     int g;
     float h;
     struct PriorityQueue_s* next_set;
+    struct PriorityQueue_s* previous_set;
 };
 
 // Creates a new tile with the given number and color
@@ -247,7 +248,6 @@ void FreeTileSets(struct TileSet_s* tileset)
         FreeTileSet(cursor_set);
         cursor_set = next_set;
     }
-    
 }
 
 
@@ -889,7 +889,9 @@ int GetMenuSelection()
     AddTileToSortedTileSet(&table_tileset, CreateTile(4, 'B'));
 
     AStar(player_tileset, table_tileset);
-
+    FreeTileSets(player_tileset);
+    FreeTileSets(table_tileset);
+    exit(0);
     int selection = 0;
     printf("1 - Create a player tile set\n");
     printf("2 - Add a tile to player tile set\n");
@@ -1006,14 +1008,14 @@ void MainLoop()
     printf("Exiting\n");
 }
 
-struct PriorityQueue_s* CreatePriorityQueue(struct TileSet_s* tileset, int depth)
+struct PriorityQueue_s* CreatePriorityQueue(struct TileSet_s* tileset, struct PriorityQueue_s* previous_queue, int depth)
 {
     struct PriorityQueue_s* queue = malloc(sizeof(struct PriorityQueue_s));
     queue->tile_set = CopyTileSets(tileset);
     queue->h = heuristic(tileset);
     queue->g = depth;
     queue->next_set = NULL;
-
+    queue->previous_set = previous_queue;
     return queue;
 }
 
@@ -1273,32 +1275,53 @@ struct Tile_s* RemoveLastTileFromTileSet(struct TileSet_s* tileset)
     return last_tile;
 }
 
-struct TileSet_s* ResolvedTileset(struct TileSet_s* tileset, int depth)
+bool IsTileInMovedTiles(struct Tile_s* tile, struct Tile_s** moved_tiles, int nb_moved_tiles)
 {
-    // The open priority queue of the A* algorithm
-    struct PriorityQueue_s* queue = CreatePriorityQueue(tileset, 0);
+    int i = 0;
+    while(i < nb_moved_tiles)
+    {
+        if(moved_tiles[i] == tile)
+            return true;
+        i++;
+    }
+    return false;
+}
+
+struct PriorityQueue_s* ResolvedTileset(struct TileSet_s* tileset, struct PriorityQueue_s* queue, struct PriorityQueue_s** queue_to_free, int* free_idx)
+{
+    // Store wich tiles were moved
+    struct Tile_s** moved_tiles = calloc(50, sizeof(struct Tile_s*));
+    int moved_tile_idx = 0;
     // While the priority queu is not empty
     while(queue)
     {
         // Pop the first element of the queue, wich is one table tile set after certain moves
         struct PriorityQueue_s* best = PopFromPriorityQueue(&queue);
-        //printf("Poped from queue :\n");
-        //PrintTileSets(best->tile_set);
         // If the best is a valid set
         if(areValidSets(best->tile_set))
-            return best->tile_set;
+        {
+            free(moved_tiles);
+            return best;
+        }
         // If the search limit was exceed
-        if(depth > 10)
+        if(best->g > 10)
+        {
+            free(moved_tiles);
             return NULL;
+        }
         // Get the shortest non valid set from the table
         struct TileSet_s* table_sets = CopyTileSets(best->tile_set);
         struct TileSet_s* illegal_set = GetShortestNonValidSet(table_sets);
         // Try to concatenate each tile from the illegal tile set to every other set
         struct Tile_s* tile = illegal_set->tiles;
-        struct TileSet_s* concatenated_set = NULL;
         // Take each tile from the illegal set and try to concatenate it with every other set
         while(tile)
         {
+            if(IsTileInMovedTiles(tile, moved_tiles, moved_tile_idx))
+            {
+                tile = tile->next_tile;
+                continue;
+            }
             // Get the table sets without the tile that we are trying to add
             //table_sets = CopyTileSetsWithoutTile(best->tile_set, tile);
             struct Tile_s* next_tile = tile->next_tile;
@@ -1318,7 +1341,10 @@ struct TileSet_s* ResolvedTileset(struct TileSet_s* tileset, int depth)
                 if((isPartialSet(cursor) || isValidSet(cursor)))
                 {
                     // Put the tile at the start of the set
-                    AddToPriorityQueue(&queue, CreatePriorityQueue(table_sets, best->g + 1));             
+                    struct PriorityQueue_s* new_queue = CreatePriorityQueue(table_sets, best, best->g + 1);
+                    AddToPriorityQueue(&queue, new_queue);  
+                    queue_to_free[(*free_idx)++] = new_queue;  
+                    moved_tiles[moved_tile_idx++] = tile;       
                     PrintTileSets(table_sets);
                 }           
                 // Remove the tile from the set
@@ -1334,7 +1360,9 @@ struct TileSet_s* ResolvedTileset(struct TileSet_s* tileset, int depth)
                 if((isPartialSet(cursor) || isValidSet(cursor)))
                  {
                     // Put the tile at the start of the set
-                    AddToPriorityQueue(&queue, CreatePriorityQueue(table_sets,  best->g + 1));             
+                    struct PriorityQueue_s* new_queue = CreatePriorityQueue(table_sets, best, best->g + 1);
+                    AddToPriorityQueue(&queue, new_queue);  
+                    queue_to_free[(*free_idx)++] = new_queue; 
                     PrintTileSets(table_sets);
                 }  
                 // Remove the tile from the set
@@ -1347,11 +1375,10 @@ struct TileSet_s* ResolvedTileset(struct TileSet_s* tileset, int depth)
             tile = next_tile;
         }
         
+        FreeTileSets(table_sets);
         // Check wich tiles can be added to the illegal set
         table_sets = CopyTileSets(best->tile_set);
         illegal_set = GetShortestNonValidSet(table_sets);
-        struct Tile_s* cursor = NULL;
-
         // Get tiles in table sets that can be added to the illegal set
         struct Tile_s** set_to_add_left = wichTilesCanAddOnStart(illegal_set, table_sets);
         
@@ -1359,13 +1386,22 @@ struct TileSet_s* ResolvedTileset(struct TileSet_s* tileset, int depth)
         int idx = 0;
         while(set_to_add_left[idx])
         {
+            if(IsTileInMovedTiles(set_to_add_left[idx], moved_tiles, moved_tile_idx))
+            {
+                idx++;
+                continue;
+            }
             // Remove the tile from where it was and add it at the start of the illegal set
             PopTileFromTileSet(&set_to_add_left[idx]->tile_set->tiles, set_to_add_left[idx]);
             struct TileSet_s* previous_tileset = set_to_add_left[idx]->tile_set;
             AddTileToTileSet(&illegal_set, set_to_add_left[idx]);
 
             // Add the new table states to the priority queue
-            AddToPriorityQueue(&queue, CreatePriorityQueue(table_sets,  best->g + 1));
+            struct PriorityQueue_s* new_queue = CreatePriorityQueue(table_sets, best, best->g + 1);
+            AddToPriorityQueue(&queue, new_queue); 
+            queue_to_free[(*free_idx)++] = new_queue;   
+            moved_tiles[moved_tile_idx++] = tile;       
+
             PrintTileSets(table_sets);
             // Put back the tile in the table sets
             PopTileFromTileSet(&set_to_add_left[idx]->tile_set->tiles, set_to_add_left[idx]);
@@ -1382,12 +1418,20 @@ struct TileSet_s* ResolvedTileset(struct TileSet_s* tileset, int depth)
         idx = 0;
         while(set_to_add_right[idx])
         {
+            if(IsTileInMovedTiles(set_to_add_right[idx], moved_tiles, moved_tile_idx))
+            {
+                idx++;
+                continue;
+            }
             // Remove the tile from where it was and add it at the start of the illegal set
             PopTileFromTileSet(&set_to_add_right[idx]->tile_set->tiles, set_to_add_right[idx]);
             struct TileSet_s* previous_tileset = set_to_add_right[idx]->tile_set;
             PutTileAtEndOfTileSet(illegal_set, set_to_add_right[idx]);
             // Add the new table states to the priority queue
-            AddToPriorityQueue(&queue, CreatePriorityQueue(table_sets,  best->g + 1));
+            struct PriorityQueue_s* new_queue = CreatePriorityQueue(table_sets, best, best->g + 1);
+            AddToPriorityQueue(&queue, new_queue);   
+            queue_to_free[(*free_idx)++] = new_queue;   
+            moved_tiles[moved_tile_idx++] = tile; 
             PrintTileSets(table_sets);
             // Put back the tile in the table sets
             PopTileFromTileSet(&set_to_add_right[idx]->tile_set->tiles, set_to_add_right[idx]);
@@ -1396,8 +1440,34 @@ struct TileSet_s* ResolvedTileset(struct TileSet_s* tileset, int depth)
         }
         FreeTileSets(table_sets);
         free(set_to_add_right);
+
     } 
+    free(moved_tiles);
     printf("END OF RESOLVED TILESET\n");
+}
+
+void FreePriorityQueueNode(struct PriorityQueue_s* queue)
+{
+    FreeTileSets(queue->tile_set);
+    free(queue);
+}
+
+void ShowSteps(struct PriorityQueue_s* queue)
+{
+    if(!queue)
+        return;
+    ShowSteps(queue->previous_set);
+    PrintTileSets(queue->tile_set);
+}
+
+void FreePriorityQueue(struct PriorityQueue_s* queue)
+{
+    while(queue)
+    {
+        struct PriorityQueue_s* next = queue->next_set;
+        FreePriorityQueueNode(queue);
+        queue = next;
+    }
 }
 
 void AStar(struct TileSet_s* player_tileset, struct TileSet_s* table_tileset)
@@ -1405,19 +1475,33 @@ void AStar(struct TileSet_s* player_tileset, struct TileSet_s* table_tileset)
     struct Tile_s* player_tile = player_tileset->tiles;
     struct TileSet_s* copy_table_tileset = CopyTileSets(table_tileset);
     AddTileSetToTileSet(&copy_table_tileset, CreateTilesSet());
-    struct TileSet_s* resolved_set;
+    struct PriorityQueue_s* resolved_set;
     // Try to add every tile on the rack to the table
     while(player_tile)
     {
         AddTileToTileSet(&copy_table_tileset, player_tile);
-        resolved_set = ResolvedTileset(copy_table_tileset, 0);
+        struct PriorityQueue_s* queue = CreatePriorityQueue(copy_table_tileset, NULL, 0);
+        struct PriorityQueue_s** queu_to_free = malloc(sizeof(struct PriorityQueue_s*) * 100);
+        int nb_free = 0;
+        resolved_set = ResolvedTileset(copy_table_tileset, queue, queu_to_free, &nb_free);
         if(resolved_set)
         {
             printf("Solution Found :\n");
-            PrintTileSets(resolved_set);
+            PrintTileSets(resolved_set->tile_set);
+            printf("Steps :\n");
+            ShowSteps(resolved_set);
         }
+        FreePriorityQueueNode(queue);
+        for (int i = 0; i < nb_free; i++)
+        {
+            FreePriorityQueueNode(queu_to_free[i]);
+        }
+        free(queu_to_free);
+        
         player_tile = player_tile->next_tile;
     }
+
+    FreeTileSets(copy_table_tileset);
 }
 
 int main(int argc, char** argv) {
