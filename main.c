@@ -860,11 +860,20 @@ int GetMenuSelection()
         printf("4 - Get a move to play for the player\n");
         printf("5 - Exit\n");
         printf("Enter your selection : ");
-        scanf("%d", &selection);
+        // Check if the input is a number
+        char* string = GetStringInput();
+        if(isdigit(*string) && *(string+1) == '\n')
+        {
+            selection = atoi(string);
+        }
+        else
+        {
+            selection = 0;
+        }
         if(selection < 1 || selection > 5)
             printf("Invalid selection\n");
-         int c;
-        while ((c = getchar()) != '\n' && c != EOF);
+         /*int c;
+        while ((c = getchar()) != '\n' && c != EOF);*/
     }
     return selection;
 }
