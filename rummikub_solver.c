@@ -1,9 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
-#include <stdbool.h>
-#include <string.h>
-#include <limits.h>
 // Making a solver for the rummykub game consisting of tiles composed with number going from 1 to 13 and colors red, blue, green, and yellow.
 // A tile set is a collection of tiles.
 // A tile set is valid if it contains at least 3 tiles of the same number but different colors, or if it contains at least 3 tiles of the same color but adjacent numbers.
@@ -21,6 +15,13 @@
 // The first player to place all tiles on the table in a valid tile set wins.
 // The solver need to find the best move for the player.
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <stdbool.h>
+#include <string.h>
+#include <limits.h>
+
 // Game tiles constitued of fields number (0-13) and color (R,B,G,Y)
 struct Tile_s{
     int number;
@@ -30,7 +31,7 @@ struct Tile_s{
     struct TileSet_s* tile_set;
 };
 
-// A Set of tiles constitued of an array of tiles and its size
+// A Set of tiles is constitued of tiles and link to neighbours sets
 struct TileSet_s{
     struct Tile_s* tiles;
     struct Tile_s* last_tile;
@@ -41,6 +42,7 @@ struct TileSet_s{
     int number;
 };
 
+// Priority queue for A* path finding
 struct PriorityQueue_s{
     struct TileSet_s* tile_set;
     int g;
