@@ -890,6 +890,20 @@ char* GetStringInput()
     return string;
 }
 
+
+bool areValidSets(struct TileSet_s* tileset)
+{
+    struct TileSet_s* cursor = tileset;
+    while(cursor)
+    {
+        if(!isValidSet(cursor))
+            return false;
+        cursor = cursor->next_set;
+    }
+    return true;
+}
+
+
 int GetMenuSelection()
 {
     int selection = 0;
@@ -926,22 +940,6 @@ void MainLoop()
     int selection = 0;
     struct TileSet_s* player_tileset = NULL;
     struct TileSet_s* table_tileset = NULL;
-    AddTileSetToTileSet(&table_tileset, CreateTilesSet());
-    AddTileToTileSet(&table_tileset, CreateTile(4, 'R'));
-    AddTileToTileSet(&table_tileset, CreateTile(3, 'R'));
-    AddTileToTileSet(&table_tileset, CreateTile(2, 'R'));
-    AddTileToTileSet(&table_tileset, CreateTile(1, 'R'));
-    AddTileSetToTileSet(&table_tileset, CreateTilesSet());
-    AddTileToTileSet(&table_tileset, CreateTile(4, 'G'));
-    AddTileToTileSet(&table_tileset, CreateTile(3, 'G'));
-    AddTileToTileSet(&table_tileset, CreateTile(2, 'G'));
-    AddTileToTileSet(&table_tileset, CreateTile(1, 'G'));
-
-    AddTileSetToTileSet(&table_tileset, CreateTilesSet());
-    AddTileToTileSet(&table_tileset, CreateTile(4, 'B'));
-    AddTileToTileSet(&table_tileset, CreateTile(3, 'B'));
-    AddTileToTileSet(&table_tileset, CreateTile(2, 'B'));
-    AddTileToTileSet(&table_tileset, CreateTile(1, 'B'));
 
     struct TileSet_s* player_table_tileset = NULL;
     while(selection != 5)
@@ -964,6 +962,13 @@ void MainLoop()
             printf("Enter a string to create a table tile set : ");
             char* string = GetStringInput();
             table_tileset = GetTileSetFromString(string);
+            // Check if valid tile set
+            if(!areValidSets(table_tileset))
+            {
+                printf("Invalid tile set\n");
+                FreeTileSets(table_tileset);
+                table_tileset = NULL;
+            }
             free(string);
         }
         else if(selection == 3)
@@ -978,7 +983,19 @@ void MainLoop()
                 printf("No possible combinations\n");
             FreeTileSet(combinations_tileset);
         }
-        else if(selection == 4)
+        printf("\033[2J\033[1;1H");
+        if(player_tileset)
+        {
+            printf("Player tile set :\n");
+            PrintTileSets(player_tileset);
+            printf("\n");
+        }
+        if(table_tileset)
+        {
+            printf("Table tile set :\n");
+            PrintTileSets(table_tileset);
+        }
+        if(selection == 4)
         {
             if(!player_tileset)
             {
@@ -992,24 +1009,13 @@ void MainLoop()
             }
             AStar(player_tileset, table_tileset);
         }
-
-        if(player_tileset)
-        {
-            printf("Player tile set :\n");
-            PrintTileSets(player_tileset);
-            printf("\n");
-        }
-        if(table_tileset)
-        {
-            printf("Table tile set :\n");
-            PrintTileSets(table_tileset);
-        }
     }
 
     if(player_tileset)
         FreeTileSets(player_tileset);
     if(table_tileset)
         FreeTileSets(table_tileset);
+    printf("\033[2J\033[1;1H");
     printf("Exiting\n");
 }
 
@@ -1060,19 +1066,6 @@ struct PriorityQueue_s* PopFromPriorityQueue(struct PriorityQueue_s** queue)
     current->next_set = NULL;
     return current;
 }
-
-bool areValidSets(struct TileSet_s* tileset)
-{
-    struct TileSet_s* cursor = tileset;
-    while(cursor)
-    {
-        if(!isValidSet(cursor))
-            return false;
-        cursor = cursor->next_set;
-    }
-    return true;
-}
-
 // Remove tile set from tile set list
 void RemoveTileSet(struct TileSet_s** tileset_to_remove)
 {
@@ -1339,7 +1332,7 @@ struct PriorityQueue_s* ResolvedTileset(struct TileSet_s* tileset, struct Priori
             return best;
         }
         // If the search limit was exceed
-        if(best->g > 4)
+        if(best->g > 3)
         {    
             return NULL;
         }
@@ -1641,6 +1634,7 @@ void AStar(const struct TileSet_s* restrict player_tileset, const struct TileSet
 }
 
 int main(int argc, char** argv) {
+    printf("Rummikub Solver\n");
     srand(time(NULL));
     MainLoop();
 }
