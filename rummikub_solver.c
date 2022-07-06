@@ -635,7 +635,7 @@ bool IsRun(struct TileSet_s* tileset)
 {
     if(!tileset || !tileset->tiles)
         return false;
-    if(tileset->number < 3)
+    if(tileset->number < 3 || tileset->number > 12)
         return false;
     struct Tile_s* cursor = tileset->tiles;
     int previous_number = cursor->number;
@@ -678,15 +678,49 @@ bool IsGroup(struct TileSet_s* tileset)
 {
     if(!tileset || !tileset->tiles)
         return false;
-    if(tileset->number < 3)
+    if(tileset->number < 3 || tileset->number > 4)
         return false;
     struct Tile_s* cursor = tileset->tiles;
     int previous_number = cursor->number;
     char previous_color = cursor->color;
     cursor = cursor->next_tile;
+    bool red = false, green = false, blue = false, yellow = false;
+    switch (previous_color)
+    {
+        case 'R':
+            red = true;
+            break;
+        case 'G':   
+            green = true;
+            break;
+        case 'B':
+            blue = true;
+            break;
+        case 'Y':
+            yellow = true;
+            break;
+    }
+    
     while(cursor)
     {
-        if((cursor->number != previous_number) || (cursor->color == previous_color))
+        if(cursor->color == 'R' && !red)
+            red = true;
+        else if(cursor->color == 'R' && red)
+            return false;
+        if(cursor->color == 'G' && !green)
+            green = true;
+        else if(cursor->color == 'G' && green)
+            return false;
+        if(cursor->color == 'B' && !blue)
+            blue = true;
+        else if(cursor->color == 'B' && blue)
+            return false;
+        if(cursor->color == 'Y' && !yellow)
+            yellow = true;
+        else if(cursor->color == 'Y' && yellow)
+            return false;
+        
+        if((cursor->number != previous_number))
             return false;
         previous_number = cursor->number;
         previous_color = cursor->color;
@@ -1300,14 +1334,13 @@ struct PriorityQueue_s* ResolvedTileset(struct TileSet_s* tileset, struct Priori
         // Pop the first element of the queue, wich is one table tile set after certain moves
         struct PriorityQueue_s* best = PopFromPriorityQueue(&queue);
         // If the best is a valid set
-        if(areValidSets(best->tile_set))
+        if(areValidSets(best->tile_set) && best->previous_set)
         {   
             return best;
         }
         // If the search limit was exceed
-        if(best->g > 5)
+        if(best->g > 4)
         {    
-            printf("No solution found\n");
             return NULL;
         }
         // Get the shortest non valid set from the table
@@ -1461,6 +1494,7 @@ void ShowSteps(struct PriorityQueue_s* queue)
         return;
     ShowSteps(queue->previous_set);
     PrintTileSets(queue->tile_set);
+    FreePriorityQueueNode(queue);
 }
 
 void FreePriorityQueue(struct PriorityQueue_s* queue)
@@ -1473,9 +1507,27 @@ void FreePriorityQueue(struct PriorityQueue_s* queue)
     }
 }
 
+// Copy a priority queue list
+struct PriorityQueue_s* CopyPriorityQueues(struct PriorityQueue_s* queue)
+{
+    if(!queue->previous_set)
+    {
+        return CreatePriorityQueue(queue->tile_set, NULL, queue->g);
+    }
+
+    struct PriorityQueue_s* new_queue = CreatePriorityQueue(queue->tile_set, CopyPriorityQueues(queue->previous_set), queue->g);
+    return new_queue;
+}
+
+struct PriorityQueue_s* CopyPriorityQueue(struct PriorityQueue_s* queue)
+{
+    struct PriorityQueue_s* new_queue = CreatePriorityQueue(queue->tile_set, NULL, queue->g);
+    return new_queue;
+}
+
 void AStar(const struct TileSet_s* restrict player_tileset, const struct TileSet_s* restrict table_tileset)
 {
-    struct PriorityQueue_s* resolved_set;
+    /*struct PriorityQueue_s* resolved_set;
     struct TileSet_s* copy_table_tileset;
     struct TileSet_s* copy_player_tileset = CopyTileSets(player_tileset);
     struct Tile_s* player_tile = copy_player_tileset->tiles;
@@ -1517,6 +1569,75 @@ void AStar(const struct TileSet_s* restrict player_tileset, const struct TileSet
         player_tile = next_tile;
     }
     FreeTileSets(copy_player_tileset);
+    */
+
+    struct PriorityQueue_s* current_queue = CreatePriorityQueue(table_tileset, NULL, 0);
+    struct PriorityQueue_s* next_queue = NULL;
+    struct PriorityQueue_s* possible_moves = NULL;
+
+    struct TileSet_s* copy_table_tilesets;
+    struct TileSet_s* copy_player_tileset;
+     struct TileSet_s* tileset;
+    while(current_queue)
+    {
+        copy_table_tilesets = CopyTileSets(current_queue->tile_set);
+        copy_player_tileset = CopyTileSets(player_tileset);
+        tileset = copy_table_tilesets;
+        struct TileSet_s* next_tileset;
+        while(tileset)
+        {
+            next_tileset = tileset->next_set;
+            struct Tile_s* player_tile = copy_player_tileset->tiles;
+            while(player_tile)
+            {
+                //struct Tile_s* next_tile = player_tile->next_tile;
+                AddTileSetToTileSet(&tileset, CreateTilesSet());
+                AddTileToTileSet(&tileset, CreateTile(player_tile->number, player_tile->color));
+                struct PriorityQueue_s* queue = CreatePriorityQueue(tileset, NULL, 0);
+                struct PriorityQueue_s** queue_to_free = malloc(sizeof(struct PriorityQueue_s*) * 100);
+                int nb_free = 0;
+                struct PriorityQueue_s* resolved_set = ResolvedTileset(tileset, queue, &queue_to_free, &nb_free);
+                
+                if(resolved_set){
+                    AddToPriorityQueue(&possible_moves, CopyPriorityQueues(resolved_set));
+                    AddToPriorityQueue(&next_queue, CopyPriorityQueue(resolved_set));
+                }
+
+                for (int i = 0; i < nb_free; i++)
+                    if(queue_to_free[i])
+                        FreePriorityQueueNode(queue_to_free[i]);
+                free(queue_to_free);
+                FreePriorityQueueNode(queue);
+                player_tile = player_tile->next_tile;
+            }
+            //FreeTileSets(tileset);
+            tileset = next_tileset;
+
+        }
+        FreeTileSets(copy_table_tilesets);
+        FreeTileSets(copy_player_tileset);
+        struct PriorityQueue_s* cursor = current_queue;
+        while(cursor)
+        {
+            struct PriorityQueue_s* next_cursor = cursor->next_set;
+            FreePriorityQueueNode(cursor);
+            cursor = next_cursor;
+        }
+        current_queue = next_queue;
+        next_queue = NULL;
+    }
+
+    // Check among all possible moves
+    struct PriorityQueue_s* cursor = possible_moves;
+    while(cursor)
+    {
+        printf("Possible Move :\n");
+        struct PriorityQueue_s* next_cursor = cursor->next_set;
+        PrintTileSets(cursor->tile_set);
+        printf("Steps :\n");
+        ShowSteps(cursor);
+        cursor = next_cursor;
+    }
 }
 
 int main(int argc, char** argv) {
