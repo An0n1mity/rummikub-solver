@@ -1,7 +1,7 @@
 
 
 # Rummikub-solver
-In order to generate solution solutions to a given game state of the rummikub, the solver uses the A* algorithm and try to search the solution based on a simple heuristic.
+In order to generate solutions to a given game state of the rummikub, the solver uses the A* algorithm and try to search the solution based on a simple heuristic.
 This implementation uses doubly linked list to represents tiles sets.
 
 
