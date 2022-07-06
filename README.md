@@ -9,7 +9,7 @@ This implementation uses doubly linked list to represents tiles sets.
 ## Documentation
 
 [Rummikub wikipedia](https://en.wikipedia.org/wiki/Rummikub)\
-[Rummikub solving algorithm](https://www.cs.huji.ac.il/w~ai/projects/2012/Rummikub/)
+[Rummikub solving algorithm](https://www.cs.huji.ac.il/w~ai/projects/2012/Rummikub/) made by Alex Kaganovich and Odeya Bronznick
 
 ## Screenshots
 
